@@ -1,0 +1,44 @@
+#!/usr/bin/env python
+
+# usage:
+#     ./getLinkTrackerCounts <fname>
+#
+# options:
+#
+# examples:
+
+
+import os
+import optparse
+import sys
+
+from hubcheck.linktracker import LinkTracker
+
+def parseoptions():
+    usage = "%prog [options]"
+    parser = optparse.OptionParser(usage=usage)
+#    parser.add_option('--issue-tickets',
+#                      help='submit a ticket for each confirmed bad link',
+#                      action="store_true",
+#                      dest="issue_tickets",
+#                      default=False)
+
+    options,remainder = parser.parse_args()
+    return options,remainder
+
+if __name__=='__main__':
+
+    options,remainder = parseoptions()
+
+    linksin = remainder[0]
+
+    if not os.access(linksin,os.R_OK):
+        ValueError("file not readable: %s" % linksin)
+
+    lt = LinkTracker()
+    lt.load(linksin)
+
+    for k in lt._datastore.keys():
+        print "len(%s) = %d" % (k,len(lt._datastore[k]))
+
+    sys.exit()

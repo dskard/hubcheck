@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<run>
+    <tool>
+        <about>Press Simulate to view results.</about>
+        <command>@tool/../bin/helloworld @driver</command>
+    </tool>
+    <input>
+        <string id = "name">
+            <about>
+                <label>Hello World Name</label>
+                <description>Enter your name here</description>
+            </about>
+            <default>yourname</default>
+        </string>
+    </input>
+</run>
+

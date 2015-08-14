@@ -1,0 +1,38 @@
+{
+    "toolinfo" : {
+        "name"          : "hutt",
+        "title"         : "hubcheck unit test tool",
+        "version"       : "1.0",
+        "description"   : "tool to help exercise hubcheck unit tests",
+        "vncwidth"      : 800,
+        "vncheight"     : 600,
+        "toolaccess"    : "Restricted to group(s)",
+        "toolaccessgroups" : "mytestgroup",
+        "codeaccess"    : "Closed (restricted to development team)",
+        "projectaccess" : "Closed (restricted to development team)",
+        "devteam"       : null
+    },
+    "infopage" : {
+        "title"         : "hubcheck unit test tool",
+        "description"   : "exercise hubcheck unit tests",
+        "abstract"      : "hubcheck uses this tool to test itself.",
+        "poweredby"     : null,
+        "credits"       : null,
+        "sponsoredby"   : null,
+        "references"    : null,
+        "publications"  : null,
+        "contributors"  : [],
+        "supportingdocs"    : null,
+        "screenshots"       : null,
+        "tags"              : ["hubcheck"]
+    },
+    "license" : {
+        "sourceaccess"  : "closed source",
+        "reason"        : "."
+    },
+    "files" : {
+        "Makefile"      : "src/Makefile",
+        "tool.xml"      : "rappture/tool.xml",
+        "helloworld.c"  : "src/helloworld.c"
+    }
+}

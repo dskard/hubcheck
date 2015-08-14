@@ -1,0 +1,45 @@
+{
+    "toolinfo" : {
+        "name"          : string,
+        "title"         : string,
+        "version"       : string,
+        "description"   : string,
+        "vncwidth"      : number,
+        "vncheight"     : number,
+        "toolaccess"    : string (select option),
+        "toolaccessgroups" : string,
+        "codeaccess"    : string (select option),
+        "projectaccess" : string (select option),
+        "devteam"       : list of strings (account names)
+    },
+    "infopage" : {
+        "title"         : string,
+        "description"   : string,
+        "abstract"      : string,
+        "poweredby"     : string,
+        "credits"       : string,
+        "sponsoredby"   : string,
+        "references"    : string,
+        "publications"  : string,
+        "contributors"  : [ list of contributor info objects, an empty list removes all contributors
+            {
+                "name"          : string,
+                "organization"  : string,
+                "role"          : string
+            }
+        ],
+        "supportingdocs"    : list of strings (file paths),
+        "screenshots"       : list of strings (file paths),
+        "tags"              : list of strings (tag names)
+    },
+    "license" : {
+        "sourceaccess"   : string ('open source' or 'closed source'),
+        "templates"      : string (only valid for 'open source'),
+        "licensetext"    : string (only valid for 'open source'),
+        "authorize"      : string (only valid for 'open source'),
+        "reason"         : string (only valid for 'closed source')
+    },
+    "files" : {
+        map with local filenames as keys and remote filenames as paths
+    }
+}

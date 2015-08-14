@@ -1,0 +1,67 @@
+#!/usr/bin/env python
+
+# usage:
+#     ./container_cleanup [options]
+#
+# options:
+#    --config hubconfig.conf
+#    --username name
+#
+# examples:
+#     ./container_cleanup --config hubconfig.conf
+#     ./container_cleanup --config hubconfig.conf --username testuser
+
+
+import os
+import hubcheck
+
+
+class ContainerCleanupTool(hubcheck.Tool):
+
+    def __init__(self,logfile='hcutils.log',loglevel='INFO'):
+        super(ContainerCleanupTool,self).__init__(logfile,loglevel)
+
+        self.command_parser.add_argument(
+            '--username',
+            help='account to create',
+            action="store",
+            dest="username",
+            default=None,
+            type=str)
+
+        # parse command line and config file options
+        self.parse_options()
+
+        # start logging
+        self.start_logging()
+
+
+    def command(self):
+
+        hubname = self.testdata.find_url_for('https')
+
+        # setup the username list
+        if self.options.username is not None:
+            usernames = [self.options.username]
+        else:
+            usernames = self.testdata.get_usernames()
+
+        for username in usernames:
+            userpass = self.testdata.find_account_password(username)
+
+            ts = hubcheck.ToolSession(hubname,
+                                      username=username,
+                                      password=userpass)
+
+            for session in ts.get_open_session_detail().values():
+                print "closing session %s (%s)" \
+                    % (str(session['session_number']),username)
+                ts.stop(session['session_number'])
+
+            del ts
+
+
+if __name__=='__main__':
+
+    tool = ContainerCleanupTool()
+    tool.run()

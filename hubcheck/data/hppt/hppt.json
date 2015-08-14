@@ -1,0 +1,47 @@
+{
+    "toolinfo" : {
+        "name"          : "hppt",
+        "title"         : "hubcheck parameter passing tool",
+        "version"       : "1.0",
+        "description"   : "tool to help exercise hub parameter passing",
+        "vncwidth"      : 800,
+        "vncheight"     : 600,
+        "toolaccess"    : "Anyone can run tool",
+        "toolaccessgroups" : null,
+        "codeaccess"    : "Open source (anyone can access code)",
+        "projectaccess" : "Open to public",
+        "devteam"       : null
+    },
+    "infopage" : {
+        "title" : "hubcheck parameter passing tool",
+        "description" : "exercise hub parameter passing to tools",
+        "abstract" : "hubcheck uses this tool to test parameter passing.",
+        "poweredby" : null,
+        "credits"   : null,
+        "sponsoredby" : null,
+        "references"    : null,
+        "publications"  : null,
+        "contributors" : [
+            {
+                "username"      : "",
+                "firstname"     : "",
+                "lastname"      : "",
+                "organization"  : "",
+                "role"          : ""
+            }
+        ],
+        "supportingdocs"    : null,
+        "screenshots"       : null,
+        "tags"              : null
+    },
+    "license" : {
+        "sourceaccess"  : "open source",
+        "licensetext"   : ".",
+        "authorize"     : true
+    },
+    "files" : {
+        "Makefile"      : "src/Makefile",
+        "tool.xml"      : "rappture/tool.xml",
+        "helloworld.c"  : "src/helloworld.c"
+    }
+}

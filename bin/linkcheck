@@ -1,0 +1,567 @@
+#!/usr/bin/env python
+
+# usage:
+#     ./linkcheck [options] <url>
+#
+# options:
+#     --followavoids
+#     --followonly pattern
+#     --template path
+#     --depth value
+#     --locators value
+#     --wait value
+#     --delay value
+#     --links-in infile
+#     --links-out outfile
+#     --max-tcp-sockets
+#     --resume
+#
+# examples:
+#     ./linkcheck https://hubzero.org
+#     ./linkcheck --locators hubzero --depth 2 --wait 1 https://hubzero.org
+
+
+import hubcheck
+import json
+import os
+import re
+import sys
+import time
+import urlparse
+
+from hubcheck.linktracker import LinkTracker
+
+# ignore urls that match any of the following:
+#   /events                         don't follow links to events
+#   /vote                           don't follow links to vote for anything
+#   order=                          these sites are generally just a
+#                                   permutation of the order in which
+#                                   data on a page is displayed
+#   task=
+#   start=                          deals with listing search results
+#   limit=                          deals with listing search results
+#   search=                         deals with listing search results
+#   limitstart=                     deals with listing search results
+#   {/tags/[^\?]+\?}                listings for tags in the tags browser
+#   /answer/question/new
+#   /usage                          usage has not run on the vm
+#   sharewith=                      links to social media sites
+#   /track/                         tracking links (nees)
+#   /reportabuse/                         tracking links (nees)
+#   /login/\?return=                login links with a return id (nees)
+#   /mailto/\?tmpl=                 mailto links (nees)
+#   \?format=pdf                    pdf downloads (nees)
+
+IGNORES = [
+    'sharewith=',
+    'citation\?format=',
+#    '/resources/\d{4}/\d{2}/\d+/',
+    '/track/',
+    '/reportabuse/',
+    '/login/\?return=',
+    '/login?authenticator='
+    '/login?return='
+    '/mailto/\?tmpl=',
+#    '\?format=pdf',
+    'javascript:',
+    'mailto:',
+#    'return=',
+]
+
+AVOIDS = [
+#    'order=',
+    'task=',
+#    'start=',
+#    'limit=',
+#    'search=',
+#    'limitstart=',
+    'action=addreview',
+    '/answer/question/new',
+    '/events',
+    '/infrastructure/[^/]+/about.+',
+    '/infrastructure/[^/]+/browser.+',
+    '/infrastructure/[^/]+/changeset.+',
+    '/infrastructure/[^/]+/chrome',
+    '/infrastructure/[^/]+/export.+',
+    '/infrastructure/[^/]+/invoke.+',
+    '/infrastructure/[^/]+/log.+',
+    '/infrastructure/[^/]+/login',
+    '/infrastructure/[^/]+/milestone.+',
+    '/infrastructure/[^/]+/newticket.+',
+    '/infrastructure/[^/]+/prefs.+',
+    '/infrastructure/[^/]+/query.+',
+    '/infrastructure/[^/]+/search.+',
+    '/infrastructure/[^/]+/report.+',
+    '/infrastructure/[^/]+/roadmap.+',
+    '/infrastructure/[^/]+/ticket.+',
+    '/infrastructure/[^/]+/timeline.+',
+    '/infrastructure/[^/]+/wiki.+',
+    '/svn',
+    '/tags/[^\?]+\?',
+    '/tools/[^/]+/about.+',
+    '/tools/[^/]+/browser.+',
+    '/tools/[^/]+/changeset.+',
+    '/tools/[^/]+/chrome',
+    '/tools/[^/]+/export.+',
+    '/tools/[^/]+/invoke.+',
+    '/tools/[^/]+/log.+',
+    '/tools/[^/]+/login',
+    '/tools/[^/]+/milestone.+',
+    '/tools/[^/]+/newticket.+',
+    '/tools/[^/]+/prefs.+',
+    '/tools/[^/]+/query.+',
+    '/tools/[^/]+/search.+',
+    '/tools/[^/]+/report.+',
+    '/tools/[^/]+/roadmap.+',
+    '/tools/[^/]+/ticket.+',
+    '/tools/[^/]+/timeline.+',
+    '/tools/[^/]+/wiki.+',
+    '/usage',
+    '/vote',
+]
+
+
+class LinkCheckTool(hubcheck.Tool):
+
+    def __init__(self,logfile='linkcheck.log',loglevel='INFO'):
+        super(LinkCheckTool,self).__init__(logfile,loglevel)
+
+
+        self.command_parser.add_argument(
+            '--followavoids',
+            help='follow links we would normally avoid',
+            action="store_true",
+            dest="followavoids",
+            default=False)
+
+        self.command_parser.add_argument(
+            '--followonly',
+            help='follow links that match the provided pattern',
+            nargs="+",
+            action="store",
+            dest="followonly",
+            type=str)
+
+        self.command_parser.add_argument(
+            '--depth',
+            help='data template',
+            action="store",
+            dest="depth",
+            default=-1,
+            type=int)
+
+#        self.command_parser.add_argument(
+#            '--locators',
+#            help='which locators to use',
+#            action="store",
+#            dest="locators",
+#            default="hubzero",
+#            type=str)
+
+        self.command_parser.add_argument(
+            '--wait',
+            help='wait time to look for elements',
+            action="store",
+            dest="wait",
+            default=0,
+            type=int)
+
+        self.command_parser.add_argument(
+            '--delay',
+            help='delay between each web query',
+            action="store",
+            dest="delay",
+            default=1.0,
+            type=float)
+
+        self.command_parser.add_argument(
+            '--links-in',
+            help='load links data from a previous run',
+            action="store",
+            dest="linksin",
+            default="",
+            type=str)
+
+        self.command_parser.add_argument(
+            '--links-out',
+            help='save links data to a file',
+            action="store",
+            dest="linksout",
+            default="",
+            type=str)
+
+        self.command_parser.add_argument(
+            '--max-tcp-sockets',
+            help='maximum number of tcp sockets in use',
+            action="store",
+            dest="max_tcp_sockets",
+            default=10000,
+            type=int)
+
+        self.command_parser.add_argument(
+            '--resume',
+            help='use links-in file to resume previous run',
+            action="store_true",
+            dest="resume",
+            default=False)
+
+        self.command_parser.add_argument(
+            '--downloads',
+            help='directory where files should be downloaded to',
+            action="store",
+            dest="downloads",
+            default='downloads',
+            type=str)
+
+        self.command_parser.add_argument(
+            '--ignore',
+            help='ignore urls that match the following regular expression',
+            nargs="+",
+            action="store",
+            dest="ignore",
+            default=[],
+            type=str)
+
+#        self.command_parser.add_argument(
+#            '--screenshotdir',
+#            help='directory to hold screenshots of errors',
+#            action="store",
+#            dest="screenshotdir",
+#            type=str)
+
+        # parse command line and config file options
+        self.parse_options()
+
+        # start logging
+        self.start_logging()
+
+        # setup object variables
+        self.browser = None
+        self.catalog = None
+        self.po = None
+        self.lt = None
+
+
+    def _follow_url(self,url):
+        # check if link is listed in ignore_exprs list
+        # if so, skip it
+        continue_flag = False
+        for ignore_re in self.ignore_exprs:
+            if re.search(ignore_re,url,re.IGNORECASE):
+                continue_flag = True
+                break
+
+        if continue_flag:
+            return False
+
+        # check if link is a part of our follow_exprs list
+        continue_flag = False
+        for follow_re in self.follow_exprs:
+            if re.search(follow_re,url,re.IGNORECASE):
+                continue_flag = False
+                break
+        else:
+            continue_flag = True
+
+        if continue_flag:
+            return False
+
+        return True
+
+
+    def _get_page_links(self,parent_url):
+        """webdriver opens a socket for each of it's function calls.
+           this socket stays in the TIME_WAIT state for a default of 60 seconds.
+           we make lots of repeated webdriver calls and as the number of completed
+           links grows, we rate of the webdriver calls increases because we
+           don't have any new work to do. to help mediate running out of
+           sockets, we try to only make webdriver calls where necessary. this
+           means a little more repeated code and webdriver function calls get
+           pushed down into the lowest level of if statements."""
+
+        page_links      = []
+        scheduled_links = []
+
+        pu = urlparse.urlsplit(parent_url)
+
+        for e in self.po.find_elements("css=a"):
+
+            if not e.is_displayed():
+                # link not displayed
+                continue
+
+            href = e.get_attribute('href')
+
+            if href == None:
+                # a link without a location
+                # get it's css path locator
+                loc = 'css=' + hubcheck.utils.utilities.get_css_path(self.po._browser,e)
+                self.lt.store_bad_href(parent_url,loc)
+                continue
+
+            if not self._follow_url(href):
+                continue
+
+            if not isinstance(href,unicode):
+                href = href.decode('utf-8')
+
+            lu = urlparse.urlsplit(href)
+
+            # remove the fragment portion of the href
+            href = hubcheck.utils.utilities.href_normalize(href)
+
+
+            # ensure it is a link back to our original website
+            if lu.netloc != pu.netloc:
+                # skip link that lead to external sites
+                continue
+
+            if lu.scheme != pu.scheme:
+                if pu.scheme == 'https' and lu.scheme == 'http':
+                    # we are going from an https site to an http site
+                    # don't follow links that lead to scheme changes
+                    locator = 'css=' + hubcheck.utils.utilities.get_css_path(self.po._browser,e)
+                    self.lt.store_scheme_change(parent_url,locator,href)
+                    # fix the scheme and follow the link
+                    href = urlparse.urlunsplit(
+                            urlparse.SplitResult(
+                                'https',
+                                lu.netloc,
+                                lu.path,
+                                lu.query,
+                                lu.fragment))
+                    # continue
+
+            if self.lt.is_completed_link(href):
+                # skip links that we have already seen
+                # if it was a bad link, add a reference
+                # to its parent in the badlinks dict
+                if self.lt.is_bad_link(href):
+                    locator = 'css=' + hubcheck.utils.utilities.get_css_path(self.po._browser,e)
+                    text    = e.text.encode('utf-8')
+                    key = self.lt.store_bad_link(parent_url,locator,href)
+                    har_status = self.lt.bad_link_status(href)
+                    self.lt.set_bad_link_record_property(key,'link_text',text)
+                    self.lt.set_bad_link_record_property(key,'status',har_status)
+                continue
+
+            if href in scheduled_links:
+                # skip links that are already scheduled
+                continue
+
+            locator = 'css=' + hubcheck.utils.utilities.get_css_path(self.po._browser,e)
+            text    = e.text.encode('utf-8')
+            scheduled_links.append(href)
+            page_links.append((href,locator,text))
+
+        return page_links
+
+
+    def _error_code_handler(self, parent_url, locator, link_url, text, har_status):
+
+        # ignore private profiles,
+        # whose urls match <hubname>/members/<number>
+        # or <hubname>/members/contributors/<number>
+        ignore_res = ['/members/(contributors/)?\d+',
+                      '/tools/([^\/]+/)?wiki$']
+        if har_status == 403:
+            for ire in ignore_res:
+                if re.search(ire,link_url):
+                    return
+
+        print "status %s: storing %s" % (har_status,link_url)
+        self.logger.info("status %s: storing %s" % (har_status,link_url))
+        key = self.lt.store_bad_link(parent_url,locator,link_url)
+        self.lt.set_bad_link_record_property(key,'link_text',text)
+        self.lt.set_bad_link_record_property(key,'status',har_status)
+        return
+
+
+    def setup_regexps(self):
+
+        self.follow_exprs = [".*"]
+        if self.options.followonly:
+            self.follow_exprs = self.options.followonly
+
+        self.ignore_exprs = IGNORES + AVOIDS
+        if self.options.followavoids:
+            self.ignore_exprs = IGNORES
+
+        self.ignore_exprs.extend(self.options.ignore)
+
+
+    def setup_browser(self):
+
+        # create the downloads directory
+        if self.options.downloads:
+            self.options.downloads = os.path.abspath(self.options.downloads)
+            if not os.path.isdir(self.options.downloads):
+                os.mkdir(self.options.downloads)
+
+        # start up a selenium webdriver based browser
+        # with browsermob proxy
+        self.browser = hubcheck.browser.Firefox(
+                        downloaddir=self.options.downloads)
+#        self.browser.wait_time = self.options.wait
+
+        locators = self.testdata.get_locators()
+        self.catalog = hubcheck.PageObjectCatalog(locators,browser=self.browser)
+
+#        GenericPage = self.catalog.load('GenericPage')
+#        self.po = GenericPage(self.browser,self.catalog)
+
+
+    def setup_link_tracker(self):
+
+        url = urlparse.urlsplit(self.options.remainder[0])
+        self.lt = LinkTracker()
+
+        if self.options.linksin != '':
+            self.lt.load(self.options.linksin)
+
+        if self.options.linksout == '':
+            self.options.linksout = "%s_linkdata_%d" % (url.netloc,time.time())
+
+        if self.options.delay < 0.1:
+            # minimum delay is 0.1 seconds == 10 links / second
+            self.options.delay = 0.1
+
+        # check if we should resume from a previous run
+        # start start our run from the given site.
+        if self.options.resume == False:
+            # schedule our start page
+            self.lt.schedule_page(urlparse.urlunsplit(url),0)
+
+
+    def check_links(self):
+
+        while (self.lt.count_scheduled_pages() > 0) :
+            (parent_url,page_depth) = self.lt.next_scheduled_page()
+
+            # check if link is a part of our follow_exprs list
+            # this is only here to account for data that may comes
+            # from resume files
+            if not self._follow_url(parent_url):
+                continue
+
+            print parent_url
+            self.logger.info(parent_url)
+
+            # skip pages marked as completed
+            if self.lt.is_completed_page(parent_url):
+                continue
+
+            # control the depth of our search
+            if (self.options.depth > -1) and (page_depth > self.options.depth):
+                continue
+
+            # clear previous downloads
+            for fname in os.listdir(self.browser.downloaddir):
+                fpath = os.path.join(self.browser.downloaddir,fname)
+                if os.path.isfile(fpath):
+                    os.unlink(fpath)
+
+            # go to each page
+            time.sleep(self.options.delay)
+            try:
+                self.po.goto_page(parent_url)
+            except Exception as detail:
+                # going to the parent_url gave an exception?
+                # sometimes a TimeoutError comes up, not sure why.
+                self.lt.store_exception_link(parent_url,'','',repr(detail))
+                self.lt.store_completed_page(parent_url)
+                self.lt.save(self.options.linksout)
+                continue
+
+            # check our tcp socket count to avoid running out.
+            # if we run out, nasty kernel messages get logged.
+            # this is a crappy solution, probably better off increasing the delay
+            # we used to think the container was limited to 800 sockets,
+            # we have run this program where it showed using more than
+            # 800 open sockets. we now think the limit may be related to
+            # the openvz limit (16000) or even the system limit.
+            socket_cnt = hubcheck.utils.utilities.count_connection_types('TIME_WAIT')
+            while socket_cnt > self.options.max_tcp_sockets:
+                # wait for some of the TIME_WAIT sockets to clear out,
+                # they should only be open for about 60 seconds or whatever
+                # the system default is.
+                time.sleep(30)
+                socket_cnt = hubcheck.utils.utilities.count_connection_types('TIME_WAIT')
+
+            # get the hrefs of all links on the page
+            # weed out links that don't have href
+            page_link_info = self._get_page_links(parent_url)
+
+            # for each link on the page...
+            for (link_url,locator,text) in page_link_info:
+
+                # follow the link to see if it leads to error page
+                time.sleep(self.options.delay)
+                try:
+                    self.browser.proxy_client.new_har("page link")
+                    print "visiting link %s" % (link_url)
+                    self.logger.info("visiting link %s" % (link_url))
+                    self.po.goto_page(link_url)
+
+                    har_entry = self.browser.page_load_details()
+
+                    if self.browser.error_loading_page(har_entry):
+                        # client made an invalid request (bad links)
+                        # or client made a valid request,
+                        # but server failed while responsing.
+                        har_status = har_entry['response']['status']
+                        self._error_code_handler(parent_url, locator,
+                            link_url, text, har_status)
+                        continue
+                except Exception as detail:
+                    # following the link led to exception?
+                    # there is a weird exception that raises from has_error_code()
+                    # you get a WebDriverException: Modal dialog present message
+                    print "storing exception link: %s" % detail
+                    self.logger.info("storing exception link: %s" % detail)
+                    self.lt.store_exception_link(parent_url,link_url,locator,repr(detail))
+                    continue
+                finally:
+                    self.lt.store_completed_link(link_url)
+
+
+                # this was a good link,
+                # if we have not already processed it
+                # schedule the page to have it's links checked
+                if (self.options.depth > -1) and (page_depth > self.options.depth):
+                    continue
+                else:
+                    if not self.lt.is_completed_page(link_url):
+                        self.lt.schedule_page(link_url,page_depth + 1)
+            self.lt.store_completed_page(parent_url)
+            self.lt.save(self.options.linksout)
+
+        # clean up link tracker and web browser
+        self.lt.save(self.options.linksout)
+
+    def command(self):
+
+        self.setup_regexps()
+        self.setup_browser()
+        self.setup_link_tracker()
+
+        url = urlparse.urlsplit(self.options.remainder[0])
+        if url.scheme == '':
+            url.scheme = 'https://'
+        baseUrl = urlparse.urlunsplit(
+                    urlparse.SplitResult(
+                        url.scheme,url.netloc,'','',''))
+
+        self.browser.get(baseUrl)
+        self.po = self.catalog.load_pageobject('GenericPage')
+
+        try:
+            self.check_links()
+        finally:
+            self.browser.close()
+
+
+if __name__=='__main__':
+
+    tool = LinkCheckTool()
+    tool.run()

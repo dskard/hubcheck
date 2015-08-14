@@ -1,0 +1,97 @@
+#!/usr/bin/env python
+
+# usage:
+#     ./logintool [options]
+#
+# options:
+#    --config hubconfig.conf
+#    --video-filename myvideo.mp4
+#
+# examples:
+#
+#     ./logintool --config hubconfig.conf testuser
+#     ./logintool --config hubconfig.conf --video-filename myvideo.mp4 testuser
+
+
+import os
+import hubcheck
+
+
+class LoginTool(hubcheck.Tool):
+
+    def __init__(self,logfile='hcutils.log',loglevel='INFO'):
+        super(LoginTool,self).__init__(logfile,loglevel)
+
+        self.command_parser.add_argument(
+            '--video-filename',
+            help='name of the video file',
+            action="store",
+            dest="videofn",
+            default='password_change.mp4',
+            type=str)
+
+        # parse command line and config file options
+        self.parse_options()
+
+        # start logging
+        self.start_logging()
+
+
+    def command(self):
+
+        # set variables based on parsed options
+        username = self.options.remainder[0]
+        videofn = self.options.videofn
+
+        # retrieve account information
+        userpass = self.testdata.find_account_password(username)
+
+        # grab hub configuration from the testdata file
+        locators    = self.testdata.get_locators()
+        hostname    = self.testdata.find_url_for('https')
+        url = "https://%s" % (hostname)
+
+        # create a hubcheck object
+        hc = hubcheck.Hubcheck(hostname=hostname,locators=locators)
+
+        # initialize recording
+        self.start_recording_xvfb(videofn)
+
+        try:
+            # start up a selenium webdriver based browser
+            hc.browser.get(url)
+
+            # login to the HUB using the web interface
+            hc.utils.account.login_as(username,userpass)
+
+            # navigate to the dashboard and logout
+            hc.utils.account.logout()
+
+
+            # login to the HUB using the virtual ssh interface
+            ts = hubcheck.ToolSession(hc.hostname,
+                                      username=username,
+                                      password=userpass)
+
+            # ssh into a tool session container and run the 'echo hi' command
+            stdin,stdout,stderr = ts.access(command='echo hi')
+
+            # check stdout for the output of the command, 'hi'
+            output = stdout.read(1024)
+            assert output == 'hi\n', \
+                "error ssh'ing into tool session container: %s" % (output)
+
+        except Exception as e:
+            hc.browser.take_screenshot()
+            raise
+
+        finally:
+            # close the browser and cleanup
+            hc.browser.close()
+            self.stop_recording_xvfb()
+
+
+if __name__=='__main__':
+
+    tool = LoginTool()
+    tool.run()

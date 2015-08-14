@@ -1,0 +1,23 @@
+from setuptools import setup, find_packages
+
+setup(name='hubcheck',
+      version='1.0.0',
+      description='tools to perform user level testing against the HUBzero Platform',
+      author='Derrick Kearney',
+      author_email='telldsk at gmail dot com',
+      packages = find_packages(),
+#      install_requires=['requests>=1.1.0',
+#                        'crypto>=2.6.1',
+#                        'paramiko>=1.15.2',
+#                        'pytest>=2.7.1',
+#                        'EasyProcess>=0.1.9',
+#                        'pyvirtualdisplay>=0.1.5',
+#                        'selenium>=2.46.0',
+#                        'browsermob-proxy>=0.7.0',
+##                        'pyppp>=1.0',
+#                       ],
+      scripts=['bin/hctestrunner',
+               'bin/tdedit',
+              ],
+      include_package_data=True,
+     )

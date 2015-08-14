@@ -1,0 +1,82 @@
+#!/usr/bin/env python
+
+# tdedit <infile>
+# tdedit bd.info
+
+import hubcheck.testdata
+import getopt
+import getpass
+import sys
+import optparse
+import subprocess
+import tempfile
+import os
+
+def parseoptions():
+    usage = "usage: %prog [options] <infile>"
+    parser = optparse.OptionParser(usage=usage)
+
+    options,remainder = parser.parse_args()
+    return options,remainder
+
+def encrypt(infile,outfile,password):
+    f = hubcheck.testdata.Testdata().encrypt_file(password,infile)
+    ff = open(outfile,'wb')
+    ff.write(f.getvalue())
+    ff.close()
+
+def decrypt(infile,outfile,password):
+    f = hubcheck.testdata.Testdata().decrypt_file(password,infile)
+    ff = open(outfile,'wb')
+    ff.write(f.getvalue())
+    ff.close()
+
+def main(argv=None):
+    options,remainder = parseoptions()
+
+    # should only be infile and outfile left in the args list
+    if (len(remainder) != 1):
+        raise RuntimeError("Wrong # arguments, use --help for help")
+
+    infile, = remainder
+
+    # grab a password used to encrypt or decrypt the file
+    password = getpass.getpass("Password: ")
+
+    # setup a temporary file for the decrypted data
+    (fd, path) = tempfile.mkstemp()
+    os.close(fd)
+
+    # things are unsecure here, but it is better than our
+    # previous solution.
+    # perhaps we should restrict to only using vi, disabling the
+    # swap file, anything else?
+
+    try:
+
+        # decrypt the file
+        decrypt(infile,path,password)
+
+        # store the modification time of the original write
+        mtime1 = os.stat(path).st_mtime
+
+        # open the decrypted file in the user's editor
+        subprocess.call('vim -n %s' % (path), shell=True)
+
+        # store the modification time of the user write
+        mtime2 = os.stat(path).st_mtime
+
+        # if the temp file changed, encrypt it,
+        # and save it back to the original file name.
+        if mtime1 != mtime2:
+            encrypt(path,infile,password)
+
+    finally:
+
+        # remove the temp file
+        os.remove(path)
+
+
+if __name__ == '__main__':
+    sys.exit(main())
+

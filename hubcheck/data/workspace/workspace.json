@@ -1,0 +1,47 @@
+{
+    "toolinfo" : {
+        "name"          : "workspace",
+        "title"         : "Workspace",
+        "version"       : "1.0",
+        "description"   : "Linux Workspace",
+        "vncwidth"      : 1024,
+        "vncheight"     : 768,
+        "toolaccess"    : "Anyone can run tool",
+        "toolaccessgroups" : null,
+        "codeaccess"    : "Closed (restricted to development team)",
+        "projectaccess" : "Closed (restricted to development team)",
+        "devteam"       : null
+    },
+    "infopage" : {
+        "title" : "Workspace",
+        "description" : "Development Workspace",
+        "abstract" : "<p>\nA workspace is a Linux desktop in your browser. It provides access to HUBzero's <a href=\"http://www.rappture.org\">Rappture toolkit</a>, along with computational resources available at Purdue, on the Open Science Grid, and on the TeraGrid. You can use workspaces as a development area for new tools--as a way to test out the functionality that comes with any hub based on the HUBzero platform.  You can upload code, compile it, test it, and debug it. Once your code is working properly in a workspace, it is ready to be deployed as a tool on hubzero.org or any other hub.\n</p><p>\nYou can use normal Linux tools to transfer data into and out of your workspace.  For example, <code>sftp <i>yourlogin</i>@sftp.@@HUBADDRESS@@</code> will establish a connection with your HUB file share.  You can also use built-in <a href=\"/kb/tips/webdav\">webdav</a> support on Windows, Macintosh, and Linux operating systems to access your HUB files on your local desktop.\n</p>\n<p class=\"warning\"><em>NOTE:</em>  This facility is enabled on a case-by-case basis for developers working with the HUBzero platform.  If you have problems launching a workspace, you may not be authorized to use workspaces.  If you feel you should be authorized, please <a href=\"/feedback/report_problems/\">contact us</a> to request this feature.  Please include the name of your institution and/or the partnership supporting your request.</p>",
+        "poweredby" : null,
+        "credits"   : null,
+        "sponsoredby" : null,
+        "references"    : null,
+        "publications"  : null,
+        "contributors" : [
+            {
+                "username"      : "admin",
+                "firstname"     : "CMS",
+                "lastname"      : "Manager",
+                "organization"  : "",
+                "role"          : "Author"
+            }
+        ],
+        "supportingdocs"    : null,
+        "screenshots"       : null,
+        "tags"              : ["cyberinfrastructure",
+                               "rappture",
+                               "software development"]
+    },
+    "license" : {
+        "sourceaccess"  : "closed source",
+        "reason"        : "."
+    },
+    "files" : {
+        "invoke" : "middleware/invoke",
+        "custom" : "middleware/custom"
+    }
+}

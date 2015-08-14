@@ -1,0 +1,182 @@
+#!/usr/bin/env python
+
+# usage:
+#     ./hcuserprofile [options]
+#
+# options:
+#    --config hubconfig.conf
+#    --username name
+#
+# examples:
+#     ./hcuserprofile --testdata tdfname.info
+#     ./hcuserprofile --testdata tdfname.info --username testuser
+#
+#     ./hcuserprofile --config hubconfig.conf
+#     ./hcuserprofile --config hubconfig.conf --username testuser
+
+
+import os
+import hubcheck
+
+from selenium.common.exceptions import TimeoutException
+
+
+class UserProfileTool(hubcheck.Tool):
+
+    def __init__(self,logfile='hcutils.log',loglevel='INFO'):
+        super(UserProfileTool,self).__init__(logfile,loglevel)
+
+        self.command_parser.add_argument(
+            '--username',
+            help='account profile to update',
+            action="store",
+            dest="username",
+            default=None,
+            type=str)
+
+        # parse command line and config file options
+        self.parse_options()
+
+        # start logging
+        self.start_logging()
+
+
+    def command(self):
+
+        locators    = self.testdata.get_locators()
+        httpsurl    = self.testdata.find_url_for('https')
+        url = "https://%s" % (httpsurl)
+
+        # start up a selenium webdriver based browser
+        self.browser = hubcheck.browser.Firefox()
+
+        if self.browser is None:
+            msg = 'Failed to initialize web browser.'
+            self.logger.error(msg)
+            raise Exception(msg)
+
+        self.start_recording_xvfb('profile_change.mp4')
+
+        try:
+            self.browser.get(url)
+
+            self.catalog = hubcheck.PageObjectCatalog(locators)
+            self.utils = hubcheck.Utils(httpsurl,self.browser,self.catalog)
+
+            if self.options.username:
+                usernames = [self.options.username]
+            else:
+                usernames = self.testdata.get_usernames()
+
+            for username in usernames:
+
+                # retrieve account information
+                userdata = self.testdata.get_userdata_for(username)
+
+                # change the user profile on the website
+                self.update_user_profile(userdata.username,userdata.password)
+
+        except Exception as e:
+            self.browser.take_screenshot()
+            self.logger.exception(e)
+            raise
+
+        finally:
+            # close the browser and cleanup
+            self.browser.close()
+            self.stop_recording_xvfb()
+
+
+    def update_user_profile(self,username,password):
+
+        self.logger.info('updating user profile on website')
+
+        GenericPage = self.catalog.load('GenericPage')
+        MembersProfilePage = self.catalog.load('MembersProfilePage')
+
+        # login to the hub
+        self.utils.account.login_as(username,password)
+
+        po = GenericPage(self.browser,self.catalog)
+
+        # navigate to the members profile page
+        account_number = po.get_account_number()
+        po = MembersProfilePage(
+                self.browser,self.catalog,account_number)
+        po.goto_page()
+
+        # update the user's profile
+        # if the field doesn't exist in the page object
+        # or on the web page, log the error and ignore
+        # the exception
+
+        try:
+            po.form.organization.open()
+            try:
+                po.form.organization.update(
+                    organization=1,
+                    access='Private (only you can see)')
+            except (IndexError):
+                # no organizations in the list?
+                po.form.organization.update(
+                    orgtext='hubzero',
+                    access='Private (only you can see)')
+        except (AttributeError,TimeoutException) as e:
+            self.logger.exception(e)
+
+        try:
+            po.form.employment.open()
+            po.form.employment.update(
+                # employment='University / College Staff',
+                employment=1,
+                access='Private (only you can see)')
+        except (AttributeError,TimeoutException) as e:
+            self.logger.exception(e)
+
+        try:
+            po.form.gender.open()
+            po.form.gender.update(
+                # gender='Male',
+                gender=0,
+                access='Private (only you can see)')
+        except (AttributeError,TimeoutException) as e:
+            self.logger.exception(e)
+
+        try:
+            po.form.citizenship.open()
+            po.form.citizenship.update(
+                coriginus='Yes',
+                access='Private (only you can see)')
+        except (AttributeError,TimeoutException) as e:
+            self.logger.exception(e)
+
+        try:
+            po.form.residence.open()
+            po.form.residence.update(
+                cresidentus='Yes',
+                access='Private (only you can see)')
+        except (AttributeError,TimeoutException) as e:
+            self.logger.exception(e)
+
+        try:
+            po.form.mailpreference.open()
+            po.form.mailpreference.update(
+                mailpreference="No, don't send me emails",
+                access='Private (only you can see)')
+        except (AttributeError,TimeoutException,KeyError) as e:
+            # we also ignore KeyErrors, this is a sign that
+            # the text of the mail preference has changed
+            # changing the mail preference isn't that important
+            # and I don't know a good way to keep up with the
+            # text of drop down menus or radio buttons yet.
+            # maybe add a regex filter
+            self.logger.exception(e)
+
+        # logout
+        self.utils.account.logout()
+
+
+if __name__=='__main__':
+
+    tool = UserProfileTool()
+    tool.run()

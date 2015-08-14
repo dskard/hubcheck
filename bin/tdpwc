@@ -1,0 +1,61 @@
+#!/usr/bin/env python
+
+# tdpwc <infile> <outfile>
+# tdpwc bd.info.old bd.info.new
+
+import hubcheck
+import os
+
+class TestDataPasswordChangeTool(hubcheck.Tool):
+
+    def __init__(self,logfile='hcutils.log',loglevel='INFO'):
+        super(TestDataPasswordChangeTool,self).__init__(logfile,loglevel)
+
+        self.command_parser.add_argument(
+            '--outfile',
+            help='file to write new testdata info to',
+            action="store",
+            dest="outfile",
+            default=None,
+            type=str)
+
+        # parse command line and config file options
+        self.parse_options()
+
+        # don't start virtual display or the proxy
+        self.options.no_xvfb = True
+        self.options.bmp_port = None
+
+        # start logging
+        self.start_logging()
+
+
+    def command(self):
+
+        # for each user in the testdata dictionary
+        # read each user's info into a dictionary
+        # move the current password for the user to the old password
+        # reset the current password
+        for username in self.testdata.get_usernames():
+            userdata = self.testdata.get_userdata_for(username)
+            userdata.update_password()
+            self.testdata.set_userdata_for(username,userdata)
+
+        # determine our outfile name
+        if (self.options.outfile is None) or (self.options.outfile == ''):
+            outfile = self.options.tdfname
+        else:
+            outfile = self.options.outfile
+
+        outfile = os.path.abspath(
+                    os.path.expanduser(
+                        os.path.expandvars(outfile)))
+
+        # save the testdata to disk
+        self.testdata.save(outfile,self.options.tdfkey)
+
+
+if __name__=='__main__':
+
+    tool = TestDataPasswordChangeTool()
+    tool.run()

@@ -1,0 +1,346 @@
+#!/usr/bin/env python
+
+# usage:
+#     ./confirmBadLinks [options] linksin
+#
+# options:
+#    --issue-tickets        issue tickets for bad links.    default: False
+#    --ticket-submitter     username to issue tickets as.   default: ''
+#    --netloc               change the network location.    default: ''
+#    --links-out            save bad links data here.       default: 'badlinks.out'
+#    --locators             website locators to use.        default: 'hubzero'
+#    --testdata             testdata file.                  default: ''
+#    --downloads            downloads directory path.       default: 'downloads'
+#
+# examples:
+#     ./confirmBadLinks --testdata testdata \
+#                       --links-out still_bad_links \
+#                       linksin
+#
+#     ./confirmBadLinks --testdata testdata \
+#                       --links-out still_bad_links
+#                       --issue-tickets \
+#                       --ticket-submitter myusername
+#                       linksin
+#
+#     ./confirmBadLinks --locators locators \
+#                       --links-out still_bad_links \
+#                       linksin
+
+
+import os
+import optparse
+import getpass
+import sys
+import time
+import hubcheck
+
+from hubcheck.linktracker import LinkTracker
+from hubcheck.utils import get_css_path, \
+                           href_normalize, \
+                           switch_netloc, \
+                           count_connection_types
+from hubcheck.testdata import Testdata
+from hubcheck.webdriver import WebdriverFirefoxBrowser
+from hubcheck.pageobjects.load import PageObjectCatalog
+from hubcheck.navigation import Navigation
+
+def parseoptions():
+    usage = "%prog [options]"
+    parser = optparse.OptionParser(usage=usage)
+    parser.add_option('--issue-tickets',
+                      help='submit a ticket for each confirmed bad link',
+                      action="store_true",
+                      dest="issue_tickets",
+                      default=False)
+
+    parser.add_option('--ticket-submitter',
+                      help='submit tickets as this user',
+                      action="store",
+                      dest="ticket_submitter",
+                      default='',
+                      type='string')
+
+    parser.add_option('--netloc',
+                      help='switch the network location (website) of the link',
+                      action="store",
+                      dest="netloc",
+                      default='',
+                      type='string')
+
+    parser.add_option('--links-out',
+                      help='output file to save updated link information to',
+                      action="store",
+                      dest="linksout",
+                      default='',
+                      type='string')
+
+    parser.add_option('--locators',
+                      help='website locator set to use',
+                      action="store",
+                      dest="locators",
+                      default='hubzero',
+                      type='string')
+
+    parser.add_option('--testdata',
+                      help='testdata file name',
+                      action="store",
+                      dest="tdfname",
+                      default='',
+                      type='string')
+
+    parser.add_option('--downloads',
+                      help='directory where files should be downloaded to',
+                      action="store",
+                      dest="downloads",
+                      default='downloads',
+                      type="string")
+
+    parser.add_option('--delay',
+                      help='delay between each web query',
+                      action="store",
+                      dest="delay",
+                      default=0.5,
+                      type="float")
+
+    parser.add_option('--max-tcp-sockets',
+                      help='maximum number of tcp sockets in use',
+                      action="store",
+                      dest="max_tcp_sockets",
+                      default=10000,
+                      type="int")
+
+    options,remainder = parser.parse_args()
+    return options,remainder
+
+def file_ticket(username,password,key,record):
+    problem = "On webpage '%s', link with css path:\n\n" \
+              "'%s'\n\nleads to '%s', which looks like " \
+              "an error page.\n\n\n\n\nhcr:%s@@" \
+              % (record['parent_url'], record['locator'], record['target'], key)
+    upload = None
+
+    data = {
+        'problem'   : problem,
+        'upload'    : upload,
+    }
+
+    ticket_number = Navigation.open_new_support_ticket(data)
+
+    return ticket_number
+
+def do_click_1(po,e):
+
+    main_window = po._browser.window_handles[0]
+    window_target = e.get_attribute('target')
+    po.set_page_load_marker()
+    e.click()
+    if window_target in ['_blank']:
+        # link was opened in new window/tab
+        handles = po._browser.window_handles
+        po._browser.switch_to_window(handles[1])
+    elif window_target in ['_self','_parent','_top']:
+        # link was opened in this frame
+        pass
+    else:
+        # link was opened in a different frame
+        # the framename is in window_target
+        pass
+
+
+    po.wait_for_page_to_load()
+    has_error_code = po.get_errorbox_info() == []
+
+    if window_target in ['_blank']:
+        po._browser.close()
+        po._browser.switch_to_window(main_window)
+    elif window_target in ['_self','_parent','_top']:
+        # link was opened in this frame
+        pass
+    else:
+        # link was opened in a different frame
+        # the framename is in window_target
+        pass
+
+    return has_error_code
+
+def do_click_2(po,e):
+    href = e.get_attribute('href')
+    po.set_page_load_marker()
+    po.goto_page(href)
+    po.wait_for_page_to_load()
+    # FIXME: is_error_code () is depricated
+    # need to call
+    # har_entry = browser.page_load_details()
+    # har_status = har_entry['response']['status']
+    # or
+    # has_error_code = browser.error_loading_page()
+    has_error_code = po.is_error_code(404)
+    return has_error_code
+
+def find_link_element_with_href(po,target,locator="css=a"):
+    elist = po.find_elements(locator)
+    for e in elist:
+        href = href_normalize(e.get_attribute('href'))
+        if href == target:
+            break
+        #else:
+        #    print "href = %s" % (e.get_attribute('href'))
+        #    print "target = %s" % (target)
+    else:
+        e = None
+
+    return e
+
+def confirm_bad_links(po,lt,netloc,options):
+
+    remove_targets = []
+    for (key,record) in lt.next_bad_link():
+        target      = record['target']
+        parent      = record['parent_url']
+        locator     = record['locator']
+        screenshot  = record['screenshot']
+
+        if netloc:
+            parent = switch_netloc(netloc,parent)
+            target = switch_netloc(netloc,target)
+
+        while count_connection_types('TIME_WAIT') > options.max_tcp_sockets:
+            # wait for some of the TIME_WAIT sockets to clear out,
+            # they should only be open for about 60 seconds or whatever
+            # the system default is.
+            time.sleep(30)
+
+        # navigate to the parent page
+        time.sleep(options.delay)
+        po.goto_page(parent)
+
+        # search for the element matching the target href
+        # first by checking the locator. if we don't find
+        # it by the locator, check all links on the page
+        # for one that matches our target href. if we
+        # still don't find the element, note that it is
+        # missing, and process the next bad link record.
+
+        ## link text locators need a header.
+        #if not locator.startswith('css='):
+        #    locator = "link=" + locator
+
+        e = find_link_element_with_href(po,target,locator)
+        if not e:
+            e = find_link_element_with_href(po,target)
+            if not e:
+                print "target %s (%s) does not exist on %s"\
+                    % (target,locator,parent)
+                remove_targets.append(target)
+                continue
+
+        ## get a screenshot of the page
+        #if not screenshot:
+        #    screenshot = po._browser.get_screenshot_as_base64()
+        #    lt.set_bad_link_record_property(key,'screenshot',screenshot)
+
+        ## save the link text if any exists
+        #text = e.text.encode('utf-8')
+        #if text:
+        #    lt.set_bad_link_record_property(key,'link_text',text)
+
+
+        ## give everything a css locator.
+        #if not locator.startswith('css='):
+        #    locator = "css=" + get_css_path(e)
+        #    lt.set_bad_link_record_property(key,'locator',locator)
+
+        # click the link or go to the href's page.
+        # has_error_code = do_click_1(po,e)
+        has_error_code = do_click_2(po,e)
+
+        # check that there is an error on the page
+        if not has_error_code:
+            print "target exists: %s" % (target)
+            remove_targets.append(target)
+            continue
+
+    # remove the links that are no longer broken
+    for target in remove_targets:
+        lt.remove_bad_link(target)
+
+if __name__=='__main__':
+
+    options,remainder = parseoptions()
+
+    username = ''
+    password = ''
+    locators = ''
+    httpsurl = ''
+
+    linksin = remainder[0]
+
+    if not os.access(linksin,os.R_OK):
+        ValueError("file not readable: %s" % linksin)
+
+    if options.linksout == '':
+        options.linksout = "%s.confirmed-%d" % (linksin,time.time())
+
+    if options.ticket_submitter != '':
+        username = options.ticket_submitter
+        if sys.stdin.isatty():
+            password = getpass.getpass('ticket submitter password: ')
+        else:
+            password = sys.stdin.readline().rstrip()
+
+    # get the key for the testdata file
+    if options.tdfname != '':
+        if sys.stdin.isatty():
+            tdpass  = getpass.getpass('testdata key: ')
+        else:
+            tdpass = sys.stdin.readline().rstrip()
+
+        testdata = Testdata().load(options.tdfname,tdpass)
+
+        locators    = testdata.get_locators()
+        httpsurl    = testdata.find_url_for('https')
+
+    if locators == '':
+        locators = options.locators
+
+    if options.netloc:
+        httpsurl = options.netloc
+
+    # create the downloads directory
+    if options.downloads:
+        if not os.path.isdir(options.downloads):
+            os.mkdir(options.downloads)
+
+    url = "https://%s" % (httpsurl)
+
+    # start up a selenium webdriver based browser
+    browser = hubcheck.browser.Firefox(downloaddir=options.downloads)
+    browser.wait_time = 0
+    browser.get(url)
+
+    catalog = PageObjectCatalog(locators)
+    nav = Navigation(browser,catalog)
+
+    lt = LinkTracker()
+    lt.load(linksin)
+
+    GenericPage = catalog.load('GenericPage')
+    po = GenericPage(browser,catalog)
+
+    # confirm the bad links are still bad
+    confirm_bad_links(po,lt,options.netloc,options)
+
+    # issue tickets for broken links
+    if options.issue_tickets and username and password:
+        nav.login_as(username,password)
+        for (key,record) in lt.next_bad_link():
+            ticket_number = file_ticket(username,password,key,record)
+            print "filed ticket: %s" % (ticket_number)
+        nav.do_hub_logout()
+
+    # save our bad links database
+    lt.save(options.linksout)
+
+    browser.close()
+    sys.exit()

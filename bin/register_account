@@ -1,0 +1,164 @@
+#!/usr/bin/env python
+
+# usage:
+#     ./registerAccount [options]
+#
+# options:
+#    --username name
+#    --template template_name
+#
+# examples:
+#     ./registerAccount --conf hchub.conf
+#     ./registerAccount --conf hchub.conf --username testuser
+#     ./registerAccount --conf hchub.conf --template default
+
+
+import time
+import hubcheck
+
+class RegisterAccountTool(hubcheck.Tool):
+
+    def __init__(self,logfile='hcutils.log',loglevel='INFO'):
+        super(RegisterAccountTool,self).__init__(logfile,loglevel)
+
+        self.command_parser.add_argument(
+            '--username',
+            help='account to create',
+            action="store",
+            dest="username",
+            default=None,
+            type=str)
+
+        self.command_parser.add_argument(
+            '--template',
+            help='data template',
+            action="store",
+            dest="template",
+            default='simple',
+            type=str)
+
+        self.command_parser.add_argument(
+            '--delay',
+            help='time allocated for manual field population before account is registered',
+            action="store",
+            dest="delay",
+            default=30,
+            type=int)
+
+        # parse command line and config file options
+        self.parse_options()
+
+        # start logging
+        self.start_logging()
+
+
+    def extended_account_data(self,accountinfo):
+        """we only populate fields that are required and not populated"""
+
+        data = {
+            'username'        : accountinfo['username'],
+            'password'        : accountinfo['password'],
+            'passwordconfirm' : accountinfo['password'],
+            'firstname'       : accountinfo['firstname'],
+            'middlename'      : accountinfo['middlename'],
+            'lastname'        : accountinfo['lastname'],
+            'email'           : accountinfo['email'],
+            'emailconfirm'    : accountinfo['email'],
+            'gender'          : 'Refused',
+            'disability'      : 'Refused',
+            'hispanic'        : 'Refused',
+            'race_refused'    : 'Yes',
+            'captcha'         : False,
+            'usageagreement'  : True,
+        }
+        return data
+
+
+    def simple_account_data(self,accountinfo):
+        """we only populate fields that are required and not populated"""
+
+        data = {
+            'username'        : accountinfo['username'],
+            'password'        : accountinfo['password'],
+            'passwordconfirm' : accountinfo['password'],
+            'firstname'       : accountinfo['firstname'],
+            'middlename'      : accountinfo['middlename'],
+            'lastname'        : accountinfo['lastname'],
+            'email'           : accountinfo['email'],
+            'emailconfirm'    : accountinfo['email'],
+            'usageagreement'  : True,
+        }
+        return data
+
+
+    def command(self):
+
+
+        templates = ['extended', 'simple']
+        if not self.options.template in templates:
+            ValueError("invalid template '%s': should be one of %s" \
+                        % (self.options.template,templates))
+
+        adfxn = getattr(self,"%s_account_data" % (self.options.template))
+
+        if self.options.username is not None:
+            usernames = [self.options.username]
+        else:
+            usernames = self.testdata.get_usernames()
+
+
+        locators = self.testdata.get_locators()
+        httpsurl = self.testdata.find_url_for('https')
+        url = "https://%s" % (httpsurl)
+
+        # start up a selenium webdriver based browser
+        self.browser = hubcheck.browser.Firefox()
+
+        if self.browser is None:
+            msg = 'Failed to initialize web browser.'
+            self.logger.error(msg)
+            raise Exception(msg)
+
+        self.start_recording_xvfb('register_account.mp4')
+
+        try:
+            self.browser.get(url)
+
+            self.catalog = hubcheck.PageObjectCatalog(locators)
+
+            RegisterPage = self.catalog.load('RegisterPage')
+
+            for username in usernames:
+
+                # navigate to the registration page
+                po = RegisterPage(self.browser,self.catalog)
+                po.goto_page()
+
+                # retrieve account information
+                accountinfo = self.testdata.get_account_info(username)
+
+                # fill in the registration form
+                data = adfxn(accountinfo)
+                po.populate_form(data)
+
+                # sleep to allow human time to solve captcha
+                time.sleep(self.options.delay)
+
+                # submit the registration form
+                po.submit_form()
+
+        except Exception as e:
+            self.browser.take_screenshot(
+                self.screenshot_filepath('register_account'))
+            raise
+
+        finally:
+            # close the browser and cleanup
+            self.browser.close()
+            self.stop_recording_xvfb()
+
+
+if __name__=='__main__':
+
+    tool = RegisterAccountTool()
+    tool.run()

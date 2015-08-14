@@ -1,0 +1,147 @@
+#!/usr/bin/env python
+
+# usage:
+#     ./change_password [options]
+#
+# options:
+#    --config hubconfig.conf
+#    --username name
+#
+# examples:
+#
+#     ./change_password --config hubconfig.conf
+#     ./change_password --config hubconfig.conf --username testuser
+
+
+import os
+import hubcheck
+
+
+class ChangePasswordsTool(hubcheck.Tool):
+
+    def __init__(self,logfile='hcutils.log',loglevel='INFO'):
+        super(ChangePasswordsTool,self).__init__(logfile,loglevel)
+
+        self.command_parser.add_argument(
+            '--username',
+            help='account to change password for',
+            action="store",
+            dest="username",
+            default=None,
+            type=str)
+
+        self.command_parser.add_argument(
+            '--video-filename',
+            help='name of the video file',
+            action="store",
+            dest="videofn",
+            default='password_change.mp4',
+            type=str)
+
+        # parse command line and config file options
+        self.parse_options()
+
+        # start logging
+        self.start_logging()
+
+
+    def command(self):
+
+        # set variables based on parsed options
+        username = self.options.username
+        videofn = self.options.videofn
+        outfile = os.path.abspath(os.path.expanduser(
+                    os.path.expandvars(self.options.tdfname)))
+
+
+        # retrieve account information
+        userdata = self.testdata.get_userdata_for(username)
+
+        # update the passwords locally
+        userdata.update_password()
+
+        # grab hub configuration from the testdata file
+        locators    = self.testdata.get_locators()
+        hostname    = self.testdata.find_url_for('https')
+        url = "https://%s" % (hostname)
+
+        # create a hubcheck object
+        hc = hubcheck.Hubcheck(hostname=hostname,locators=locators)
+
+        # initialize recording
+        self.start_recording_xvfb(videofn)
+
+        try:
+            # start up a selenium webdriver based browser
+            hc.browser.get(url)
+
+            # change the password on the website
+            self.change_user_password(hc,username,
+                userdata.old_password,userdata.password)
+
+            # check that the new password works with the website
+            self.check_user_login_website(hc,username,userdata.password)
+
+            # check that the new password works with ssh
+            self.check_user_login_ssh(hc,username,userdata.password)
+
+            # save the password back to the testdata object
+            self.testdata.set_userdata_for(hc,username,userdata)
+
+        except Exception as e:
+            hc.browser.take_screenshot()
+            raise
+
+        finally:
+            # save the testdata to disk
+            self.testdata.save(outfile,self.options.tdfkey)
+
+            # close the browser and cleanup
+            hc.browser.close()
+            self.stop_recording_xvfb()
+
+
+    def change_user_password(self,hc,username,old_pass,new_pass):
+
+        self.logger.info('updating website password for %s' % (username))
+
+        # login to the hub
+        hc.utils.account.login_as(username,old_pass)
+
+        # navigate to the change password page
+        po = hc.catalog.load_pageobject('MembersChangePasswordPage')
+        po.goto_page()
+
+        # change the user's password
+        po.change_password(old_pass,new_pass,new_pass)
+
+        # navigate to the dashboard and logout
+        hc.utils.account.logout()
+
+
+    def check_user_login_website(self,hc,username,password):
+
+        # test login with the new password
+        hc.utils.account.login_as(username,password)
+        hc.utils.account.logout()
+
+
+    def check_user_login_ssh(self,hc,username,password):
+
+        ts = hubcheck.ToolSession(hc.hostname,
+                                  username=username,
+                                  password=password)
+
+        # ssh into a tool session container and run the 'echo hi' command
+        stdin,stdout,stderr = ts.access(command='echo hi')
+
+        # check stdout for the output of the command, 'hi'
+        output = stdout.read(1024)
+        assert output == 'hi\n', \
+            "error ssh'ing into tool session container: %s" % (output)
+
+
+if __name__=='__main__':
+
+    tool = ChangePasswordsTool()
+    tool.run()
