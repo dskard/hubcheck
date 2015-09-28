@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
-# tdpwc <infile> <outfile>
-# tdpwc bd.info.old bd.info.new
+# tdpwc --conf <config> --outfile <outfile>
+# tdpwc --conf bd.conf
+# tdpwc --conf bd.conf --outfile bd.info.new
 
 import hubcheck
 import os
