@@ -18,6 +18,7 @@ setup(name='hubcheck',
 #                       ],
       scripts=['bin/hctestrunner',
                'bin/tdedit',
+               'bin/register_account',
               ],
       include_package_data=True,
      )
