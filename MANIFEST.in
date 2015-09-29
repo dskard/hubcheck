@@ -6,4 +6,3 @@ include hubcheck/data/hutt/*
 include hubcheck/data/images/*
 include hubcheck/data/uploads/*
 include hubcheck/data/workspace/*
-include hubcheck/tests/*
