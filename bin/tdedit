@@ -3,7 +3,6 @@
 # tdedit <infile>
 # tdedit bd.info
 
-import hubcheck.testdata
 import getopt
 import getpass
 import sys
@@ -11,6 +10,9 @@ import optparse
 import subprocess
 import tempfile
 import os
+
+import hubcheck.conf.testdata
+
 
 def parseoptions():
     usage = "usage: %prog [options] <infile>"
@@ -20,13 +22,13 @@ def parseoptions():
     return options,remainder
 
 def encrypt(infile,outfile,password):
-    f = hubcheck.testdata.Testdata().encrypt_file(password,infile)
+    f = hubcheck.conf.testdata.Testdata().encrypt_file(password,infile)
     ff = open(outfile,'wb')
     ff.write(f.getvalue())
     ff.close()
 
 def decrypt(infile,outfile,password):
-    f = hubcheck.testdata.Testdata().decrypt_file(password,infile)
+    f = hubcheck.conf.testdata.Testdata().decrypt_file(password,infile)
     ff = open(outfile,'wb')
     ff.write(f.getvalue())
     ff.close()
