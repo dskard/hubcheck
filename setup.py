@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(name='hubcheck',
       version='1.0.0',
-      description='tools to perform user level testing against the HUBzero Platform',
+      description='tools to perform user level automation and testing against the HUBzero Platform',
       author='Derrick Kearney',
       author_email='telldsk at gmail dot com',
       packages = find_packages(),
