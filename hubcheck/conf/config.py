@@ -5,7 +5,6 @@ class Config(object):
 
     data_dir = resource_filename('hubcheck','data')
     profiles_dir = resource_filename('hubcheck','profiles')
-    tests_dir = resource_filename('hubcheck','tests')
 
 
     # user configuration variables

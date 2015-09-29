@@ -9,6 +9,9 @@ import sys
 
 import hubcheck
 
+from pkg_resources import resource_filename
+
+
 
 class StreamLogger(StringIO.StringIO):
 
@@ -112,7 +115,7 @@ class HcTestRunnerTool(hubcheck.Tool):
         # allow users to specify the directory holding tests.
         tests_dir = self.options.tests_dir
         if tests_dir is None:
-            tests_dir = hubcheck.conf.settings.tests_dir
+            tests_dir = resource_filename('hchztests','tests')
 
         # run the tests
         self.logger.info("running test cases")
