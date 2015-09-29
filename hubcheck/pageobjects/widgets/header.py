@@ -141,6 +141,23 @@ class Header_Locators_Base_3(object):
     }
 
 
+class Header_Locators_Base_4(object):
+    """
+    locators for Header object
+
+    used on nanohub
+    """
+
+    locators = {
+        'base'          : "css=#header",
+        'login'         : "css=#login",
+        'register'      : "css=#register",
+        'logout'        : "css=#logout",
+        'myaccount'     : "css=#usersname",
+        'search'        : "css=#searchword",
+    }
+
+
 class Header1(Header):
     def __init__(self, owner, locatordict={}):
         super(Header1,self).__init__(owner,locatordict)
@@ -473,6 +490,46 @@ class Header2_Locators_Base_5(object):
     }
 
 
+class Header2_Locators_Base_6(object):
+    """locators for Header2 object
+       login and register is one link
+       updated locators to include anchor
+    """
+
+    locators = {
+        'base'          : "css=#masthead",
+        'acctbase'      : "css=#account",
+        'login'         : "css=#account-login",
+        'register'      : "css=#account-login",
+        'logout'        : "css=#account-logout a",
+        'details'       : "css=.account-details",
+        'dashboard'     : "css=#account-dashboard a",
+        'messages'      : "css=#account-messages a",
+        'profile'       : "css=#account-profile a",
+        'search'        : "css=#searchform",
+    }
+
+
+class Header2_Locators_Base_7(object):
+    """locators for Header2 object
+       separate login and register links
+       updated locators to include anchor
+    """
+
+    locators = {
+        'base'          : "css=#masthead",
+        'acctbase'      : "css=#account",
+        'login'         : "css=#login",
+        'register'      : "css=#register",
+        'logout'        : "css=#account-logout a",
+        'details'       : "css=.account-details",
+        'dashboard'     : "css=#account-dashboard a",
+        'messages'      : "css=#account-messages a",
+        'profile'       : "css=#account-profile a",
+        'search'        : "css=#searchform",
+    }
+
+
 class Header3(Header):
     """
     represents header on hubs where the username and my account links
@@ -559,6 +616,19 @@ class Header3_Locators_Base_3(object):
         'logout'        : "css=#account > a:nth-child(1)",
         'myaccount'     : "css=#account > a:nth-child(2)",
         'username'      : "css=#who > a:nth-child(1)",
+        'search'        : "css=#sitesearch",
+    }
+
+class Header3_Locators_Base_4(object):
+    """locators for Header object"""
+
+    locators = {
+        'base'          : "css=#header",
+        'login'         : "css=#account-login",
+        'register'      : "css=#account-register",
+        'logout'        : "css=#account-logout",
+        'myaccount'     : "css=#account-dashboard",
+        'username'      : "css=#username",
         'search'        : "css=#sitesearch",
     }
 
